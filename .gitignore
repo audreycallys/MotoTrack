@@ -1,0 +1,16 @@
+# Node.js
+node_modules/
+dist/
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Flutter
+.dart_tool/
+.flutter-plugins-dependencies
+build/
+
+# System
+.DS_Store
