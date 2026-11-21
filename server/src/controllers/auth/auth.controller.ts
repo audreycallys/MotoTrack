@@ -121,22 +121,6 @@ export const getMe = (req: Request, res: Response): void => {
   });
 };
 
-// TEST ADMIN ACCESS
-export const adminTest = (req: Request, res: Response): void => {
-  res.status(200).json({
-    success: true,
-    message: "Admin access granted",
-  });
-};
-
-// TEST CUSTOMER ACCESS
-export const customerTest = (req: Request, res: Response): void => {
-  res.status(200).json({
-    success: true,
-    message: "Customer access granted",
-  });
-};
-
 // CHANGE PASSWORD
 export const changePassword = async (
   req: Request,
