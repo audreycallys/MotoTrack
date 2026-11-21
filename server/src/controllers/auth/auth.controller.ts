@@ -106,3 +106,28 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     });
   }
 };
+
+// GET CURRENT USER
+export const getMe = (req: Request, res: Response): void => {
+  res.status(200).json({
+    success: true,
+    message: "Authenticated user",
+    data: req.user,
+  });
+};
+
+// TEST ADMIN ACCESS
+export const adminTest = (req: Request, res: Response): void => {
+  res.status(200).json({
+    success: true,
+    message: "Admin access granted",
+  });
+};
+
+// TEST CUSTOMER ACCESS
+export const customerTest = (req: Request, res: Response): void => {
+  res.status(200).json({
+    success: true,
+    message: "Customer access granted",
+  });
+};

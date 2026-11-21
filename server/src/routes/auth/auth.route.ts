@@ -1,6 +1,15 @@
 import { Router } from "express";
 import { register, login } from "../../controllers/auth/auth.controller";
 
+import {
+  getMe,
+  adminTest,
+  customerTest,
+} from "../../controllers/auth/auth.controller";
+
+import { authMiddleware } from "../../middleware/auth.middleware";
+import { isAdmin, isCustomer } from "../../middleware/role.middleware";
+
 const router = Router();
 
 /**
@@ -86,5 +95,60 @@ router.post("/register", register);
  *         description: Internal server error
  */
 router.post("/login", login);
+
+/**
+ * @openapi
+ * /api/auth/me:
+ *   get:
+ *     tags:
+ *       - Authentication
+ *     summary: Get current authenticated user
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Authenticated user information
+ *       401:
+ *         description: Unauthorized
+ */
+router.get("/me", authMiddleware, getMe);
+
+/**
+ * @openapi
+ * /api/auth/admin-test:
+ *   get:
+ *     tags:
+ *       - Authentication
+ *     summary: Test admin authorization
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Admin access granted
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden
+ */
+router.get("/admin-test", authMiddleware, isAdmin, adminTest);
+
+/**
+ * @openapi
+ * /api/auth/customer-test:
+ *   get:
+ *     tags:
+ *       - Authentication
+ *     summary: Test customer authorization
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Customer access granted
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden
+ */
+router.get("/customer-test", authMiddleware, isCustomer, customerTest);
 
 export default router;
