@@ -1,12 +1,12 @@
 import { Router } from "express";
-import { register, login } from "../../controllers/auth/auth.controller";
-
 import {
+  register,
+  login,
   getMe,
   adminTest,
   customerTest,
+  changePassword,
 } from "../../controllers/auth/auth.controller";
-
 import { authMiddleware } from "../../middleware/auth.middleware";
 import { isAdmin, isCustomer } from "../../middleware/role.middleware";
 
@@ -150,5 +150,47 @@ router.get("/admin-test", authMiddleware, isAdmin, adminTest);
  *         description: Forbidden
  */
 router.get("/customer-test", authMiddleware, isCustomer, customerTest);
+
+/**
+ * @openapi
+ * /api/auth/change-password:
+ *   patch:
+ *     tags:
+ *       - Authentication
+ *     summary: Change authenticated user password
+ *     description: Available for customer and admin.
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - currentPassword
+ *               - newPassword
+ *             properties:
+ *               currentPassword:
+ *                 type: string
+ *                 format: password
+ *                 example: OldPassword123
+ *               newPassword:
+ *                 type: string
+ *                 format: password
+ *                 minLength: 8
+ *                 maxLength: 72
+ *                 example: NewPassword123
+ *     responses:
+ *       200:
+ *         description: Password changed successfully
+ *       400:
+ *         description: Invalid input or password
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
+ */
+router.patch("/change-password", authMiddleware, changePassword);
 
 export default router;

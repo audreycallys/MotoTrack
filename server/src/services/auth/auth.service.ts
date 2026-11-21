@@ -3,9 +3,10 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { db } from "../../config/db";
 import { usersTable, rolesTable } from "../../config/schema";
-import {
-  LoginInput,
+import type {
   RegisterInput,
+  LoginInput,
+  ChangePasswordInput,
 } from "../../validations/auth/auth.validation";
 
 // REGISTER
@@ -103,5 +104,58 @@ export async function loginUser(data: LoginInput) {
       email: user.email,
       role: user.role,
     },
+  };
+}
+
+// CHANGE PASSWORD
+export async function changePassword(
+  userId: number,
+  data: ChangePasswordInput,
+) {
+  // Find user
+  const [user] = await db
+    .select({
+      id: usersTable.id,
+      password: usersTable.password,
+    })
+    .from(usersTable)
+    .where(eq(usersTable.id, userId))
+    .limit(1);
+
+  if (!user) {
+    throw new Error("USER_NOT_FOUND");
+  }
+
+  // Verify current password
+  const isPasswordValid = await bcrypt.compare(
+    data.currentPassword,
+    user.password,
+  );
+
+  if (!isPasswordValid) {
+    throw new Error("INVALID_CURRENT_PASSWORD");
+  }
+
+  // Prevent reusing current password
+  const isSamePassword = await bcrypt.compare(data.newPassword, user.password);
+
+  if (isSamePassword) {
+    throw new Error("SAME_PASSWORD");
+  }
+
+  // Hash new password
+  const hashedPassword = await bcrypt.hash(data.newPassword, 12);
+
+  // Update password
+  await db
+    .update(usersTable)
+    .set({
+      password: hashedPassword,
+      updatedAt: new Date(),
+    })
+    .where(eq(usersTable.id, userId));
+
+  return {
+    message: "Password changed successfully",
   };
 }

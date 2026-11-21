@@ -1,8 +1,13 @@
 import type { Request, Response } from "express";
-import { registerUser, loginUser } from "../../services/auth/auth.service";
+import {
+  registerUser,
+  loginUser,
+  changePassword as changeUserPassword,
+} from "../../services/auth/auth.service";
 import {
   loginSchema,
   registerSchema,
+  changePasswordSchema,
 } from "../../validations/auth/auth.validation";
 
 // REGISTER
@@ -130,4 +135,71 @@ export const customerTest = (req: Request, res: Response): void => {
     success: true,
     message: "Customer access granted",
   });
+};
+
+// CHANGE PASSWORD
+export const changePassword = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  if (!req.user) {
+    res.status(401).json({
+      success: false,
+      message: "Authentication required",
+    });
+    return;
+  }
+
+  const validation = changePasswordSchema.safeParse(req.body);
+
+  if (!validation.success) {
+    res.status(400).json({
+      success: false,
+      message: "Validation failed",
+      errors: validation.error.issues,
+    });
+    return;
+  }
+
+  try {
+    const result = await changeUserPassword(req.user.id, validation.data);
+
+    res.status(200).json({
+      success: true,
+      message: result.message,
+    });
+  } catch (error) {
+    if (error instanceof Error) {
+      if (error.message === "USER_NOT_FOUND") {
+        res.status(401).json({
+          success: false,
+          message: "User account not found",
+        });
+        return;
+      }
+
+      if (error.message === "INVALID_CURRENT_PASSWORD") {
+        res.status(400).json({
+          success: false,
+          message: "Current password is incorrect",
+        });
+        return;
+      }
+
+      if (error.message === "SAME_PASSWORD") {
+        res.status(400).json({
+          success: false,
+          message: "New password must be different",
+        });
+        return;
+      }
+    }
+
+    console.error("Change password error:", error);
+
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
 };
