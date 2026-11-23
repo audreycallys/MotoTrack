@@ -1,189 +1,271 @@
 import type { Request, Response } from "express";
+import { db } from "../../config/db";
+import { eq } from "drizzle-orm";
+import { usersTable, rolesTable } from "../../config/schema";
+import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
+
 import {
-  registerUser,
-  loginUser,
-  changePassword as changeUserPassword,
-} from "../../services/auth/auth.service";
-import {
-  loginSchema,
   registerSchema,
+  loginSchema,
   changePasswordSchema,
 } from "../../validations/auth/auth.validation";
 
-// REGISTER
-export const register = async (req: Request, res: Response): Promise<void> => {
-  const validation = registerSchema.safeParse(req.body);
+export class AuthController {
+  // REGISTER
+  register = async (req: Request, res: Response) => {
+    try {
+      const validation = registerSchema.safeParse(req.body);
 
-  if (!validation.success) {
-    res.status(400).json({
-      success: false,
-      message: "Validation failed",
-      errors: validation.error.issues,
-    });
-    return;
-  }
-
-  try {
-    const user = await registerUser(validation.data);
-
-    res.status(201).json({
-      success: true,
-      message: "Registration successful",
-      data: user,
-    });
-  } catch (error) {
-    if (error instanceof Error) {
-      if (error.message === "EMAIL_EXISTS") {
-        res.status(409).json({
+      if (!validation.success) {
+        return res.status(400).json({
           success: false,
-          message: "Email already registered",
+          message: "Validation failed",
+          errors: validation.error.issues,
         });
-        return;
       }
 
-      if (error.message === "CUSTOMER_ROLE_NOT_FOUND") {
-        res.status(500).json({
+      const { name, email, phone, password } = validation.data;
+
+      const existingEmail = await db.query.usersTable.findFirst({
+        where: eq(usersTable.email, email),
+      });
+
+      if (existingEmail) {
+        return res.status(409).json({
+          success: false,
+          message: "Email already exists",
+        });
+      }
+
+      const customerRole = await db.query.rolesTable.findFirst({
+        where: eq(rolesTable.title, "customer"),
+      });
+
+      if (!customerRole) {
+        return res.status(500).json({
+          success: false,
+          message: "Customer role not found",
+        });
+      }
+
+      const hashedPassword = await bcrypt.hash(password, 12);
+
+      const [newUser] = await db
+        .insert(usersTable)
+        .values({
+          roleId: customerRole.id,
+          name,
+          email,
+          phone,
+          password: hashedPassword,
+        })
+        .returning({
+          id: usersTable.id,
+          name: usersTable.name,
+          email: usersTable.email,
+          phone: usersTable.phone,
+        });
+
+      return res.status(201).json({
+        success: true,
+        message: "Register successful",
+        data: { user: newUser },
+      });
+    } catch (error: unknown) {
+      console.error("Register error:", error);
+
+      const dbError = error as {
+        code?: string;
+        cause?: { code?: string };
+      };
+
+      if (dbError.code === "23505" || dbError.cause?.code === "23505") {
+        return res.status(409).json({
+          success: false,
+          message: "Email or plate number already exists",
+        });
+      }
+
+      return res.status(500).json({
+        success: false,
+        message: "Internal server error",
+      });
+    }
+  };
+
+  // LOGIN
+  login = async (req: Request, res: Response) => {
+    try {
+      const validation = loginSchema.safeParse(req.body);
+
+      if (!validation.success) {
+        return res.status(400).json({
+          success: false,
+          message: "Validation failed",
+          errors: validation.error.issues,
+        });
+      }
+
+      const { email, password } = validation.data;
+
+      const [user] = await db
+        .select({
+          id: usersTable.id,
+          name: usersTable.name,
+          email: usersTable.email,
+          password: usersTable.password,
+          role: rolesTable.title,
+        })
+        .from(usersTable)
+        .innerJoin(rolesTable, eq(usersTable.roleId, rolesTable.id))
+        .where(eq(usersTable.email, email))
+        .limit(1);
+
+      if (!user) {
+        return res.status(401).json({
+          success: false,
+          message: "Email or password incorrect",
+        });
+      }
+
+      const isPasswordValid = await bcrypt.compare(password, user.password);
+
+      if (!isPasswordValid) {
+        return res.status(401).json({
+          success: false,
+          message: "Email or password incorrect",
+        });
+      }
+
+      const secret = process.env.JWT_SECRET;
+
+      if (!secret) {
+        return res.status(500).json({
           success: false,
           message: "Server configuration error",
         });
-        return;
       }
-    }
 
-    // PostgreSQL unique constraint
-    const dbError = error as {
-      code?: string;
-      cause?: { code?: string };
-    };
+      const token = jwt.sign(
+        {
+          id: user.id,
+          role: user.role,
+        },
+        secret,
+        { expiresIn: "1d" },
+      );
 
-    if (dbError.code === "23505" || dbError.cause?.code === "23505") {
-      res.status(409).json({
-        success: false,
-        message: "Email already registered",
+      return res.status(200).json({
+        success: true,
+        message: "Login successful",
+        data: {
+          token,
+          user: {
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            role: user.role,
+          },
+        },
       });
-      return;
-    }
+    } catch (error) {
+      console.error("Login error:", error);
 
-    console.error("Register error:", error);
-
-    res.status(500).json({
-      success: false,
-      message: "Internal server error",
-    });
-  }
-};
-
-// LOGIN
-export const login = async (req: Request, res: Response): Promise<void> => {
-  const validation = loginSchema.safeParse(req.body);
-
-  if (!validation.success) {
-    res.status(400).json({
-      success: false,
-      message: "Validation failed",
-      errors: validation.error.issues,
-    });
-    return;
-  }
-
-  try {
-    const result = await loginUser(validation.data);
-
-    res.status(200).json({
-      success: true,
-      message: "Login successful",
-      data: result,
-    });
-  } catch (error) {
-    if (error instanceof Error && error.message === "INVALID_CREDENTIALS") {
-      res.status(401).json({
+      return res.status(500).json({
         success: false,
-        message: "Invalid email or password",
+        message: "Internal server error",
       });
-      return;
     }
+  };
 
-    console.error("Login error:", error);
-
-    res.status(500).json({
-      success: false,
-      message: "Internal server error",
-    });
-  }
-};
-
-// GET CURRENT USER
-export const getMe = (req: Request, res: Response): void => {
-  res.status(200).json({
-    success: true,
-    message: "Authenticated user",
-    data: req.user,
-  });
-};
-
-// CHANGE PASSWORD
-export const changePassword = async (
-  req: Request,
-  res: Response,
-): Promise<void> => {
-  if (!req.user) {
-    res.status(401).json({
-      success: false,
-      message: "Authentication required",
-    });
-    return;
-  }
-
-  const validation = changePasswordSchema.safeParse(req.body);
-
-  if (!validation.success) {
-    res.status(400).json({
-      success: false,
-      message: "Validation failed",
-      errors: validation.error.issues,
-    });
-    return;
-  }
-
-  try {
-    const result = await changeUserPassword(req.user.id, validation.data);
-
-    res.status(200).json({
+  // GET CURRENT USER
+  getMe = (req: Request, res: Response) => {
+    return res.status(200).json({
       success: true,
-      message: result.message,
+      message: "Authenticated user",
+      data: req.user,
     });
-  } catch (error) {
-    if (error instanceof Error) {
-      if (error.message === "USER_NOT_FOUND") {
-        res.status(401).json({
+  };
+
+  // CHANGE PASSWORD
+  changePassword = async (req: Request, res: Response) => {
+    try {
+      const validation = changePasswordSchema.safeParse(req.body);
+
+      if (!validation.success) {
+        return res.status(400).json({
           success: false,
-          message: "User account not found",
+          message: "Validation failed",
+          errors: validation.error.issues,
         });
-        return;
       }
 
-      if (error.message === "INVALID_CURRENT_PASSWORD") {
-        res.status(400).json({
+      if (!req.user) {
+        return res.status(401).json({
+          success: false,
+          message: "Authentication required",
+        });
+      }
+
+      const { currentPassword, newPassword } = validation.data;
+      const userId = req.user.id;
+
+      const user = await db.query.usersTable.findFirst({
+        where: eq(usersTable.id, userId),
+      });
+
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          message: "User not found",
+        });
+      }
+
+      const isPasswordValid = await bcrypt.compare(
+        currentPassword,
+        user.password,
+      );
+
+      if (!isPasswordValid) {
+        return res.status(400).json({
           success: false,
           message: "Current password is incorrect",
         });
-        return;
       }
 
-      if (error.message === "SAME_PASSWORD") {
-        res.status(400).json({
+      const isSamePassword = await bcrypt.compare(newPassword, user.password);
+
+      if (isSamePassword) {
+        return res.status(400).json({
           success: false,
           message: "New password must be different",
         });
-        return;
       }
+
+      const hashedPassword = await bcrypt.hash(newPassword, 12);
+
+      await db
+        .update(usersTable)
+        .set({
+          password: hashedPassword,
+          updatedAt: new Date(),
+        })
+        .where(eq(usersTable.id, userId));
+
+      return res.status(200).json({
+        success: true,
+        message: "Password changed successfully",
+      });
+    } catch (error) {
+      console.error("Change password error:", error);
+
+      return res.status(500).json({
+        success: false,
+        message: "Internal server error",
+      });
     }
+  };
+}
 
-    console.error("Change password error:", error);
-
-    res.status(500).json({
-      success: false,
-      message: "Internal server error",
-    });
-  }
-};
+export default new AuthController();

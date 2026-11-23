@@ -1,10 +1,5 @@
 import { Router } from "express";
-import {
-  register,
-  login,
-  getMe,
-  changePassword,
-} from "../../controllers/auth/auth.controller";
+import authController from "../../controllers/auth/auth.controller";
 import { authMiddleware } from "../../middleware/auth.middleware";
 
 const router = Router();
@@ -54,7 +49,7 @@ const router = Router();
  *       500:
  *         description: Internal server error
  */
-router.post("/register", register);
+router.post("/register", authController.register);
 
 /**
  * @openapi
@@ -91,7 +86,7 @@ router.post("/register", register);
  *       500:
  *         description: Internal server error
  */
-router.post("/login", login);
+router.post("/login", authController.login);
 
 /**
  * @openapi
@@ -108,7 +103,7 @@ router.post("/login", login);
  *       401:
  *         description: Unauthorized
  */
-router.get("/me", authMiddleware, getMe);
+router.get("/me", authMiddleware, authController.getMe);
 
 /**
  * @openapi
@@ -150,6 +145,6 @@ router.get("/me", authMiddleware, getMe);
  *       500:
  *         description: Internal server error
  */
-router.patch("/change-password", authMiddleware, changePassword);
+router.patch("/change-password", authMiddleware, authController.changePassword);
 
 export default router;

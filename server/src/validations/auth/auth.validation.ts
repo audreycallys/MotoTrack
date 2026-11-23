@@ -36,8 +36,3 @@ export const changePasswordSchema = z.object({
     .min(8, "New password must be at least 8 characters")
     .max(72, "New password must not exceed 72 characters"),
 });
-
-// TYPES
-export type RegisterInput = z.infer<typeof registerSchema>;
-export type LoginInput = z.infer<typeof loginSchema>;
-export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
