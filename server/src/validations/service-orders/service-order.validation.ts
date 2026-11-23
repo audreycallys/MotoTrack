@@ -28,3 +28,19 @@ export const estimateDecisionSchema = z.object({
 export const serviceOrderIdSchema = z.object({
   id: z.coerce.number<number>().int().positive(),
 });
+
+// ADMIN INSPECTION
+export const inspectServiceOrderSchema = z.object({
+  inspectionNotes: z
+    .string()
+    .trim()
+    .min(5, "Inspection notes must be at least 5 characters")
+    .max(2000, "Inspection notes must not exceed 2000 characters"),
+});
+
+// ADMIN ESTIMATE
+export const createEstimateSchema = z.object({
+  estimatedTotal: z
+    .number()
+    .nonnegative("Estimated total must not be negative"),
+});
