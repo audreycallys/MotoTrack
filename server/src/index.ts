@@ -1,6 +1,8 @@
 import express from "express";
 import dotenv from "dotenv";
 import authRoutes from "./routes/auth/auth.route";
+import vehicleRoutes from "./routes/vehicles/vehicle.route";
+
 import { swaggerUi, swaggerSpec } from "./config/swagger";
 
 dotenv.config();
@@ -16,6 +18,7 @@ app.get("/", (req, res) => {
 
 // API Routes
 app.use("/api/auth", authRoutes);
+app.use("/api/vehicles", vehicleRoutes);
 
 // Swagger Documentation
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
