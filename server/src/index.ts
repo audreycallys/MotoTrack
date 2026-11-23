@@ -5,6 +5,7 @@ import authRoutes from "./routes/auth/auth.route";
 import vehicleRoutes from "./routes/vehicles/vehicle.route";
 import serviceRoutes from "./routes/services/service.route";
 import serviceOrderRoutes from "./routes/service-orders/service-order.route";
+import adminServiceOrderRoutes from "./routes/service-orders/admin-service-order.route";
 
 import { swaggerUi, swaggerSpec } from "./config/swagger";
 
@@ -24,6 +25,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/vehicles", vehicleRoutes);
 app.use("/api/services", serviceRoutes);
 app.use("/api/service-orders", serviceOrderRoutes);
+app.use("/api/admin/service-orders", adminServiceOrderRoutes);
 
 // Swagger Documentation
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
