@@ -5,6 +5,7 @@ import { isAdmin } from "../../middleware/role.middleware";
 
 const router = Router();
 
+// ALL ROUTES REQUIRE ADMIN ACCESS
 router.use(authMiddleware, isAdmin);
 
 /**
@@ -34,7 +35,7 @@ router.get("/", adminServiceOrderController.getAllServiceOrders);
  *   get:
  *     tags:
  *       - Admin Service Orders
- *     summary: Get service order details
+ *     summary: Get service order by ID
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -43,6 +44,7 @@ router.get("/", adminServiceOrderController.getAllServiceOrders);
  *         required: true
  *         schema:
  *           type: integer
+ *           minimum: 1
  *     responses:
  *       200:
  *         description: Service order retrieved successfully
@@ -65,7 +67,7 @@ router.get("/:id", adminServiceOrderController.getServiceOrderById);
  *   patch:
  *     tags:
  *       - Admin Service Orders
- *     summary: Receive a submitted vehicle
+ *     summary: Receive a submitted service order
  *     description: Changes status from submitted to received.
  *     security:
  *       - bearerAuth: []
@@ -75,6 +77,7 @@ router.get("/:id", adminServiceOrderController.getServiceOrderById);
  *         required: true
  *         schema:
  *           type: integer
+ *           minimum: 1
  *     responses:
  *       200:
  *         description: Service order received successfully
@@ -109,6 +112,7 @@ router.patch("/:id/receive", adminServiceOrderController.receiveServiceOrder);
  *         required: true
  *         schema:
  *           type: integer
+ *           minimum: 1
  *     requestBody:
  *       required: true
  *       content:
@@ -122,12 +126,12 @@ router.patch("/:id/receive", adminServiceOrderController.receiveServiceOrder);
  *                 type: string
  *                 minLength: 5
  *                 maxLength: 2000
- *                 example: Oli mesin sudah kotor dan kampas rem depan menipis
+ *                 example: Oli mesin kotor dan kampas rem depan menipis
  *     responses:
  *       200:
- *         description: Service order inspected successfully
+ *         description: Vehicle inspected successfully
  *       400:
- *         description: Validation failed or incorrect order status
+ *         description: Validation failed or incorrect status
  *       401:
  *         description: Authentication required
  *       403:
@@ -147,8 +151,8 @@ router.patch("/:id/inspect", adminServiceOrderController.inspectServiceOrder);
  *   patch:
  *     tags:
  *       - Admin Service Orders
- *     summary: Submit service cost estimate
- *     description: Changes status from inspected to awaiting_approval.
+ *     summary: Submit detailed service estimate
+ *     description: Calculates the estimated total from service and part items. Changes status from inspected to awaiting_approval.
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -157,6 +161,8 @@ router.patch("/:id/inspect", adminServiceOrderController.inspectServiceOrder);
  *         required: true
  *         schema:
  *           type: integer
+ *           minimum: 1
+ *         description: Service order ID
  *     requestBody:
  *       required: true
  *       content:
@@ -164,17 +170,50 @@ router.patch("/:id/inspect", adminServiceOrderController.inspectServiceOrder);
  *           schema:
  *             type: object
  *             required:
- *               - estimatedTotal
+ *               - items
  *             properties:
- *               estimatedTotal:
- *                 type: number
- *                 minimum: 0
- *                 example: 175000
+ *               items:
+ *                 type: array
+ *                 minItems: 1
+ *                 items:
+ *                   type: object
+ *                   required:
+ *                     - itemType
+ *                     - name
+ *                     - quantity
+ *                     - unitPrice
+ *                   properties:
+ *                     serviceId:
+ *                       type: integer
+ *                       nullable: true
+ *                       minimum: 1
+ *                       description: Optional active catalog service ID.
+ *                       example: 1
+ *                     itemType:
+ *                       type: string
+ *                       enum:
+ *                         - service
+ *                         - part
+ *                       example: service
+ *                     name:
+ *                       type: string
+ *                       minLength: 3
+ *                       maxLength: 100
+ *                       example: Ganti Oli Mesin
+ *                     quantity:
+ *                       type: integer
+ *                       minimum: 1
+ *                       example: 1
+ *                     unitPrice:
+ *                       type: number
+ *                       minimum: 0
+ *                       multipleOf: 0.01
+ *                       example: 75000
  *     responses:
  *       200:
- *         description: Service estimate submitted successfully
+ *         description: Detailed estimate submitted successfully
  *       400:
- *         description: Validation failed or incorrect order status
+ *         description: Validation failed or order not ready
  *       401:
  *         description: Authentication required
  *       403:
@@ -195,6 +234,7 @@ router.patch("/:id/estimate", adminServiceOrderController.createEstimate);
  *     tags:
  *       - Admin Service Orders
  *     summary: Start approved service work
+ *     description: Changes status from awaiting_approval to in_progress after customer approval.
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -203,19 +243,22 @@ router.patch("/:id/estimate", adminServiceOrderController.createEstimate);
  *         required: true
  *         schema:
  *           type: integer
+ *           minimum: 1
  *     responses:
  *       200:
  *         description: Service started successfully
  *       400:
  *         description: Estimate not approved
  *       401:
- *         description: Unauthorized
+ *         description: Authentication required
  *       403:
- *         description: Admin only
+ *         description: Admin access required
  *       404:
  *         description: Service order not found
  *       409:
- *         description: Status conflict
+ *         description: Service order status has changed
+ *       500:
+ *         description: Internal server error
  */
 router.patch("/:id/start", adminServiceOrderController.startServiceOrder);
 
@@ -225,7 +268,8 @@ router.patch("/:id/start", adminServiceOrderController.startServiceOrder);
  *   patch:
  *     tags:
  *       - Admin Service Orders
- *     summary: Move service to final inspection
+ *     summary: Move service order to final inspection
+ *     description: Changes status from in_progress to final_inspection.
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -234,6 +278,7 @@ router.patch("/:id/start", adminServiceOrderController.startServiceOrder);
  *         required: true
  *         schema:
  *           type: integer
+ *           minimum: 1
  *     requestBody:
  *       required: true
  *       content:
@@ -245,20 +290,24 @@ router.patch("/:id/start", adminServiceOrderController.startServiceOrder);
  *             properties:
  *               notes:
  *                 type: string
- *                 example: All parts installed and tested
+ *                 minLength: 5
+ *                 maxLength: 2000
+ *                 example: Semua komponen sudah terpasang dan diuji
  *     responses:
  *       200:
- *         description: Final inspection started
+ *         description: Final inspection started successfully
  *       400:
- *         description: Invalid status or input
+ *         description: Validation failed or incorrect status
  *       401:
- *         description: Unauthorized
+ *         description: Authentication required
  *       403:
- *         description: Admin only
+ *         description: Admin access required
  *       404:
  *         description: Service order not found
  *       409:
- *         description: Status conflict
+ *         description: Service order status has changed
+ *       500:
+ *         description: Internal server error
  */
 router.patch(
   "/:id/final-inspection",
@@ -272,6 +321,7 @@ router.patch(
  *     tags:
  *       - Admin Service Orders
  *     summary: Complete service order
+ *     description: Changes status from final_inspection to completed.
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -280,6 +330,7 @@ router.patch(
  *         required: true
  *         schema:
  *           type: integer
+ *           minimum: 1
  *     requestBody:
  *       required: true
  *       content:
@@ -292,23 +343,28 @@ router.patch(
  *             properties:
  *               finalNotes:
  *                 type: string
- *                 example: Service completed and motorcycle tested
+ *                 minLength: 5
+ *                 maxLength: 2000
+ *                 example: Servis selesai dan motor telah diuji
  *               finalTotal:
  *                 type: number
+ *                 minimum: 0
  *                 example: 175000
  *     responses:
  *       200:
  *         description: Service completed successfully
  *       400:
- *         description: Invalid status or input
+ *         description: Validation failed or incorrect status
  *       401:
- *         description: Unauthorized
+ *         description: Authentication required
  *       403:
- *         description: Admin only
+ *         description: Admin access required
  *       404:
  *         description: Service order not found
  *       409:
- *         description: Status conflict
+ *         description: Service order status has changed
+ *       500:
+ *         description: Internal server error
  */
 router.patch("/:id/complete", adminServiceOrderController.completeServiceOrder);
 

@@ -64,3 +64,45 @@ export const completeServiceOrderSchema = z.object({
 
   finalTotal: z.number().nonnegative("Final total must not be negative"),
 });
+
+// SERVICE ORDER ITEM
+export const serviceOrderItemSchema = z.object({
+  serviceId: z
+    .number()
+    .int("Service ID must be an integer")
+    .positive("Invalid service ID")
+    .nullable()
+    .optional(),
+
+  itemType: z.enum(["service", "part"]),
+
+  name: z
+    .string()
+    .trim()
+    .min(3, "Item name must be at least 3 characters")
+    .max(100, "Item name must not exceed 100 characters"),
+
+  quantity: z
+    .number()
+    .int("Quantity must be an integer")
+    .positive("Quantity must be greater than zero"),
+
+  unitPrice: z
+    .number()
+    .nonnegative("Unit price must not be negative")
+    .refine(
+      (value) => Number.isFinite(value),
+      "Unit price must be a finite number",
+    )
+    .refine(
+      (value) => Number.isInteger(value * 100),
+      "Unit price must have at most 2 decimal places",
+    ),
+});
+
+// CREATE DETAILED ESTIMATE
+export const createDetailedEstimateSchema = z.object({
+  items: z
+    .array(serviceOrderItemSchema)
+    .min(1, "At least one item is required"),
+});

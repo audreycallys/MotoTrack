@@ -1,12 +1,18 @@
 import type { Request, Response } from "express";
 import { db } from "../../config/db";
 import { and, desc, eq } from "drizzle-orm";
-import { serviceOrdersTable, serviceUpdatesTable } from "../../config/schema";
+
+import {
+  serviceOrdersTable,
+  serviceUpdatesTable,
+  servicesTable,
+  serviceOrderItemsTable,
+} from "../../config/schema";
 
 import {
   serviceOrderIdSchema,
   inspectServiceOrderSchema,
-  createEstimateSchema,
+  createDetailedEstimateSchema,
   serviceProgressSchema,
   completeServiceOrderSchema,
 } from "../../validations/service-orders/service-order.validation";
@@ -213,11 +219,11 @@ export class AdminServiceOrderController {
     }
   };
 
-  // CREATE ESTIMATE
+  // CREATE DETAILED ESTIMATE
   createEstimate = async (req: Request, res: Response) => {
     try {
       const idValidation = serviceOrderIdSchema.safeParse(req.params);
-      const bodyValidation = createEstimateSchema.safeParse(req.body);
+      const bodyValidation = createDetailedEstimateSchema.safeParse(req.body);
 
       if (!idValidation.success || !bodyValidation.success) {
         return res.status(400).json({
@@ -231,7 +237,9 @@ export class AdminServiceOrderController {
       }
 
       const orderId = idValidation.data.id;
+      const items = bodyValidation.data.items;
 
+      // Check service order
       const order = await db.query.serviceOrdersTable.findFirst({
         where: eq(serviceOrdersTable.id, orderId),
       });
@@ -250,23 +258,126 @@ export class AdminServiceOrderController {
         });
       }
 
-      const [updatedOrder] = await db
-        .update(serviceOrdersTable)
-        .set({
-          estimatedTotal: bodyValidation.data.estimatedTotal.toString(),
-          estimateStatus: "pending",
-          status: "awaiting_approval",
-        })
-        .where(
-          and(
-            eq(serviceOrdersTable.id, orderId),
-            eq(serviceOrdersTable.status, "inspected"),
-            eq(serviceOrdersTable.estimateStatus, "draft"),
-          ),
-        )
-        .returning();
+      // Validate catalog references
+      for (const item of items) {
+        if (item.serviceId != null) {
+          if (item.itemType !== "service") {
+            return res.status(400).json({
+              success: false,
+              message: "Only service items can reference a service ID",
+            });
+          }
 
-      if (!updatedOrder) {
+          const catalogService = await db.query.servicesTable.findFirst({
+            where: and(
+              eq(servicesTable.id, item.serviceId),
+              eq(servicesTable.isActive, true),
+            ),
+          });
+
+          if (!catalogService) {
+            return res.status(400).json({
+              success: false,
+              message: `Active service ${item.serviceId} not found`,
+            });
+          }
+        }
+      }
+
+      // Calculate item subtotals
+      const calculatedItems = items.map((item) => {
+        const unitPriceCents = Math.round(item.unitPrice * 100);
+        const subtotalCents = unitPriceCents * item.quantity;
+
+        return {
+          serviceId: item.serviceId ?? null,
+          itemType: item.itemType,
+          name: item.name,
+          quantity: item.quantity,
+          unitPriceCents,
+          subtotalCents,
+        };
+      });
+
+      // Calculate estimated total
+      const totalCents = calculatedItems.reduce(
+        (total, item) => total + item.subtotalCents,
+        0,
+      );
+
+      // Maximum value for numeric(12,2)
+      const maxCents = 999999999999;
+
+      const invalidAmount =
+        !Number.isSafeInteger(totalCents) ||
+        totalCents > maxCents ||
+        calculatedItems.some(
+          (item) =>
+            !Number.isSafeInteger(item.unitPriceCents) ||
+            !Number.isSafeInteger(item.subtotalCents) ||
+            item.unitPriceCents > maxCents ||
+            item.subtotalCents > maxCents,
+        );
+
+      if (invalidAmount) {
+        return res.status(400).json({
+          success: false,
+          message: "Estimate amount exceeds allowed limit",
+        });
+      }
+
+      const estimatedTotal = (totalCents / 100).toFixed(2);
+
+      // Save estimate and items in one transaction
+      const result = await db.transaction(async (tx) => {
+        const [updatedOrder] = await tx
+          .update(serviceOrdersTable)
+          .set({
+            estimatedTotal,
+            estimateStatus: "pending",
+            status: "awaiting_approval",
+          })
+          .where(
+            and(
+              eq(serviceOrdersTable.id, orderId),
+              eq(serviceOrdersTable.status, "inspected"),
+              eq(serviceOrdersTable.estimateStatus, "draft"),
+            ),
+          )
+          .returning();
+
+        if (!updatedOrder) {
+          return null;
+        }
+
+        // Remove previous draft items
+        await tx
+          .delete(serviceOrderItemsTable)
+          .where(eq(serviceOrderItemsTable.serviceOrderId, orderId));
+
+        // Insert detailed estimate items
+        const savedItems = await tx
+          .insert(serviceOrderItemsTable)
+          .values(
+            calculatedItems.map((item) => ({
+              serviceOrderId: orderId,
+              serviceId: item.serviceId,
+              itemType: item.itemType,
+              name: item.name,
+              quantity: item.quantity,
+              unitPrice: (item.unitPriceCents / 100).toFixed(2),
+              subtotal: (item.subtotalCents / 100).toFixed(2),
+            })),
+          )
+          .returning();
+
+        return {
+          order: updatedOrder,
+          items: savedItems,
+        };
+      });
+
+      if (!result) {
         return res.status(409).json({
           success: false,
           message: "Service order status has changed",
@@ -275,11 +386,15 @@ export class AdminServiceOrderController {
 
       return res.status(200).json({
         success: true,
-        message: "Service estimate submitted successfully",
-        data: updatedOrder,
+        message: "Detailed estimate submitted successfully",
+        data: {
+          order: result.order,
+          items: result.items,
+          estimatedTotal,
+        },
       });
     } catch (error) {
-      console.error("Create estimate error:", error);
+      console.error("Create detailed estimate error:", error);
 
       return res.status(500).json({
         success: false,
@@ -345,7 +460,9 @@ export class AdminServiceOrderController {
           )
           .returning();
 
-        if (!updated) return null;
+        if (!updated) {
+          return null;
+        }
 
         await tx.insert(serviceUpdatesTable).values({
           serviceOrderId: orderId,
@@ -437,7 +554,9 @@ export class AdminServiceOrderController {
           )
           .returning();
 
-        if (!updated) return null;
+        if (!updated) {
+          return null;
+        }
 
         await tx.insert(serviceUpdatesTable).values({
           serviceOrderId: orderId,
@@ -532,7 +651,9 @@ export class AdminServiceOrderController {
           )
           .returning();
 
-        if (!updated) return null;
+        if (!updated) {
+          return null;
+        }
 
         await tx.insert(serviceUpdatesTable).values({
           serviceOrderId: orderId,
