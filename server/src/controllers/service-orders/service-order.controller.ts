@@ -1,7 +1,11 @@
 import type { Request, Response } from "express";
 import { db } from "../../config/db";
-import { and, desc, eq } from "drizzle-orm";
-import { serviceOrdersTable, vehiclesTable } from "../../config/schema";
+import { and, desc, eq, asc } from "drizzle-orm";
+import {
+  serviceOrdersTable,
+  vehiclesTable,
+  serviceUpdatesTable,
+} from "../../config/schema";
 
 import {
   createServiceOrderSchema,
@@ -242,6 +246,75 @@ export class ServiceOrderController {
       });
     } catch (error) {
       console.error("Estimate decision error:", error);
+
+      return res.status(500).json({
+        success: false,
+        message: "Internal server error",
+      });
+    }
+  };
+
+  // GET MY SERVICE UPDATES
+  getServiceUpdates = async (req: Request, res: Response) => {
+    try {
+      if (!req.user) {
+        return res.status(401).json({
+          success: false,
+          message: "Authentication required",
+        });
+      }
+
+      const validation = serviceOrderIdSchema.safeParse(req.params);
+
+      if (!validation.success) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid service order ID",
+        });
+      }
+
+      const orderId = validation.data.id;
+      const userId = req.user.id;
+
+      // Check service order ownership
+      const order = await db.query.serviceOrdersTable.findFirst({
+        where: and(
+          eq(serviceOrdersTable.id, orderId),
+          eq(serviceOrdersTable.userId, userId),
+        ),
+      });
+
+      if (!order) {
+        return res.status(404).json({
+          success: false,
+          message: "Service order not found",
+        });
+      }
+
+      // Get service updates
+      const updates = await db
+        .select({
+          id: serviceUpdatesTable.id,
+          serviceOrderId: serviceUpdatesTable.serviceOrderId,
+          status: serviceUpdatesTable.status,
+          notes: serviceUpdatesTable.notes,
+          imageUrl: serviceUpdatesTable.imageUrl,
+          createdAt: serviceUpdatesTable.createdAt,
+        })
+        .from(serviceUpdatesTable)
+        .where(eq(serviceUpdatesTable.serviceOrderId, orderId))
+        .orderBy(
+          asc(serviceUpdatesTable.createdAt),
+          asc(serviceUpdatesTable.id),
+        );
+
+      return res.status(200).json({
+        success: true,
+        message: "Service updates retrieved successfully",
+        data: updates,
+      });
+    } catch (error) {
+      console.error("Get service updates error:", error);
 
       return res.status(500).json({
         success: false,

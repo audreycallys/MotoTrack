@@ -176,4 +176,74 @@ router.patch(
   serviceOrderController.decideEstimate,
 );
 
+/**
+ * @openapi
+ * /api/service-orders/{id}/updates:
+ *   get:
+ *     tags:
+ *       - Service Orders
+ *     summary: Get my service progress history
+ *     description: Returns progress updates for a service order owned by the authenticated customer.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Service order ID
+ *     responses:
+ *       200:
+ *         description: Service updates retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: Service updates retrieved successfully
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: integer
+ *                       serviceOrderId:
+ *                         type: integer
+ *                       status:
+ *                         type: string
+ *                         example: in_progress
+ *                       notes:
+ *                         type: string
+ *                         nullable: true
+ *                       imageUrl:
+ *                         type: string
+ *                         nullable: true
+ *                       createdAt:
+ *                         type: string
+ *                         format: date-time
+ *       400:
+ *         description: Invalid service order ID
+ *       401:
+ *         description: Authentication required
+ *       403:
+ *         description: Customer access required
+ *       404:
+ *         description: Service order not found
+ *       500:
+ *         description: Internal server error
+ */
+router.get(
+  "/:id/updates",
+  authMiddleware,
+  isCustomer,
+  serviceOrderController.getServiceUpdates,
+);
+
 export default router;
