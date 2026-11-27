@@ -3,6 +3,11 @@ import adminServiceOrderController from "../../controllers/service-orders/admin-
 import { authMiddleware } from "../../middleware/auth.middleware";
 import { isAdmin } from "../../middleware/role.middleware";
 
+import type { Request, Response, NextFunction } from "express";
+
+import multer from "multer";
+import { uploadSingleImage } from "../../middleware/upload.middleware";
+
 const router = Router();
 
 // ALL ROUTES REQUIRE ADMIN ACCESS
@@ -403,5 +408,120 @@ router.patch("/:id/complete", adminServiceOrderController.completeServiceOrder);
  *         description: Internal server error
  */
 router.patch("/:id/cancel", adminServiceOrderController.cancelRejectedOrder);
+
+// HANDLE UPLOAD ERRORS
+const handleImageUpload = (req: Request, res: Response, next: NextFunction) => {
+  uploadSingleImage(req, res, (error: unknown) => {
+    if (error) {
+      const tooLarge =
+        error instanceof multer.MulterError && error.code === "LIMIT_FILE_SIZE";
+
+      return res.status(tooLarge ? 413 : 400).json({
+        success: false,
+        message: tooLarge
+          ? "Image must not exceed 5 MB"
+          : "Invalid image upload",
+      });
+    }
+
+    next();
+  });
+};
+
+/**
+ * @openapi
+ * /api/admin/service-orders/{id}/inspection-photo:
+ *   patch:
+ *     tags:
+ *       - Admin Service Orders
+ *     summary: Upload vehicle inspection photo
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - photo
+ *             properties:
+ *               photo:
+ *                 type: string
+ *                 format: binary
+ *     responses:
+ *       200:
+ *         description: Inspection photo uploaded
+ *       400:
+ *         description: Invalid upload or status
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Admin only
+ *       404:
+ *         description: Service order not found
+ *       409:
+ *         description: Service order status changed
+ *       413:
+ *         description: Image too large
+ */
+router.patch(
+  "/:id/inspection-photo",
+  handleImageUpload,
+  adminServiceOrderController.uploadInspectionPhoto,
+);
+
+/**
+ * @openapi
+ * /api/admin/service-orders/{id}/progress-photo:
+ *   post:
+ *     tags:
+ *       - Admin Service Orders
+ *     summary: Upload service progress photo
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - photo
+ *             properties:
+ *               photo:
+ *                 type: string
+ *                 format: binary
+ *     responses:
+ *       201:
+ *         description: Progress photo uploaded
+ *       400:
+ *         description: Invalid upload or status
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Admin only
+ *       404:
+ *         description: Service order not found
+ *       413:
+ *         description: Image too large
+ */
+router.post(
+  "/:id/progress-photo",
+  handleImageUpload,
+  adminServiceOrderController.uploadProgressPhoto,
+);
 
 export default router;

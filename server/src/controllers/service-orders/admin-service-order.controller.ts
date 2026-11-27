@@ -1,6 +1,6 @@
 import type { Request, Response } from "express";
 import { db } from "../../config/db";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, or } from "drizzle-orm";
 
 import {
   serviceOrdersTable,
@@ -16,6 +16,11 @@ import {
   serviceProgressSchema,
   completeServiceOrderSchema,
 } from "../../validations/service-orders/service-order.validation";
+
+import {
+  uploadToCloudinary,
+  deleteFromCloudinary,
+} from "../../services/cloudinary.service";
 
 export class AdminServiceOrderController {
   // GET ALL SERVICE ORDERS
@@ -773,6 +778,176 @@ export class AdminServiceOrderController {
       });
     } catch (error) {
       console.error("Cancel service order error:", error);
+
+      return res.status(500).json({
+        success: false,
+        message: "Internal server error",
+      });
+    }
+  };
+
+  // UPLOAD INSPECTION PHOTO
+  uploadInspectionPhoto = async (req: Request, res: Response) => {
+    try {
+      const validation = serviceOrderIdSchema.safeParse(req.params);
+
+      if (!validation.success) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid service order ID",
+        });
+      }
+
+      if (!req.file) {
+        return res.status(400).json({
+          success: false,
+          message: "Photo is required",
+        });
+      }
+
+      const orderId = validation.data.id;
+
+      const order = await db.query.serviceOrdersTable.findFirst({
+        where: eq(serviceOrdersTable.id, orderId),
+      });
+
+      if (!order) {
+        return res.status(404).json({
+          success: false,
+          message: "Service order not found",
+        });
+      }
+
+      if (order.status !== "received" && order.status !== "inspected") {
+        return res.status(400).json({
+          success: false,
+          message: "Inspection photo cannot be uploaded at this stage",
+        });
+      }
+
+      const uploaded = await uploadToCloudinary(req.file.buffer);
+
+      try {
+        const [updatedOrder] = await db
+          .update(serviceOrdersTable)
+          .set({
+            inspectionImageUrl: uploaded.secure_url,
+          })
+          .where(
+            and(
+              eq(serviceOrdersTable.id, orderId),
+              or(
+                eq(serviceOrdersTable.status, "received"),
+                eq(serviceOrdersTable.status, "inspected"),
+              ),
+            ),
+          )
+          .returning();
+
+        if (!updatedOrder) {
+          await deleteFromCloudinary(uploaded.public_id);
+          return res.status(409).json({
+            success: false,
+            message: "Service order status has changed",
+          });
+        }
+
+        return res.status(200).json({
+          success: true,
+          message: "Inspection photo uploaded successfully",
+          data: {
+            serviceOrderId: orderId,
+            imageUrl: uploaded.secure_url,
+          },
+        });
+      } catch (error) {
+        await deleteFromCloudinary(uploaded.public_id).catch(console.error);
+        throw error;
+      }
+    } catch (error) {
+      console.error("Upload inspection photo error:", error);
+
+      return res.status(500).json({
+        success: false,
+        message: "Internal server error",
+      });
+    }
+  };
+
+  // UPLOAD SERVICE PROGRESS PHOTO
+  uploadProgressPhoto = async (req: Request, res: Response) => {
+    try {
+      if (!req.user) {
+        return res.status(401).json({
+          success: false,
+          message: "Authentication required",
+        });
+      }
+
+      const validation = serviceOrderIdSchema.safeParse(req.params);
+
+      if (!validation.success) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid service order ID",
+        });
+      }
+
+      if (!req.file) {
+        return res.status(400).json({
+          success: false,
+          message: "Photo is required",
+        });
+      }
+
+      const orderId = validation.data.id;
+
+      const order = await db.query.serviceOrdersTable.findFirst({
+        where: eq(serviceOrdersTable.id, orderId),
+      });
+
+      if (!order) {
+        return res.status(404).json({
+          success: false,
+          message: "Service order not found",
+        });
+      }
+
+      if (
+        order.status !== "in_progress" &&
+        order.status !== "final_inspection"
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "Service is not in progress",
+        });
+      }
+
+      const uploaded = await uploadToCloudinary(req.file.buffer);
+
+      try {
+        const [newUpdate] = await db
+          .insert(serviceUpdatesTable)
+          .values({
+            serviceOrderId: orderId,
+            updatedBy: req.user.id,
+            status: order.status,
+            notes: "Service progress photo uploaded",
+            imageUrl: uploaded.secure_url,
+          })
+          .returning();
+
+        return res.status(201).json({
+          success: true,
+          message: "Progress photo uploaded successfully",
+          data: newUpdate,
+        });
+      } catch (error) {
+        await deleteFromCloudinary(uploaded.public_id).catch(console.error);
+        throw error;
+      }
+    } catch (error) {
+      console.error("Upload progress photo error:", error);
 
       return res.status(500).json({
         success: false,
