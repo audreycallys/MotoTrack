@@ -121,4 +121,59 @@ router.get(
   serviceOrderController.getServiceOrderById,
 );
 
+/**
+ * @openapi
+ * /api/service-orders/{id}/estimate-decision:
+ *   patch:
+ *     tags:
+ *       - Service Orders
+ *     summary: Approve or reject service estimate
+ *     description: Customer decides on a pending estimate for their own service order.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Service order ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - decision
+ *             properties:
+ *               decision:
+ *                 type: string
+ *                 enum:
+ *                   - approved
+ *                   - rejected
+ *                 example: approved
+ *     responses:
+ *       200:
+ *         description: Estimate decision saved successfully
+ *       400:
+ *         description: Validation failed or estimate not awaiting approval
+ *       401:
+ *         description: Authentication required
+ *       403:
+ *         description: Customer access required
+ *       404:
+ *         description: Service order not found
+ *       409:
+ *         description: Service order status has changed
+ *       500:
+ *         description: Internal server error
+ */
+router.patch(
+  "/:id/estimate-decision",
+  authMiddleware,
+  isCustomer,
+  serviceOrderController.decideEstimate,
+);
+
 export default router;

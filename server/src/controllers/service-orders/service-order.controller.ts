@@ -6,6 +6,7 @@ import { serviceOrdersTable, vehiclesTable } from "../../config/schema";
 import {
   createServiceOrderSchema,
   serviceOrderIdSchema,
+  estimateDecisionSchema,
 } from "../../validations/service-orders/service-order.validation";
 
 export class ServiceOrderController {
@@ -145,6 +146,102 @@ export class ServiceOrderController {
       });
     } catch (error) {
       console.error("Get service order error:", error);
+
+      return res.status(500).json({
+        success: false,
+        message: "Internal server error",
+      });
+    }
+  };
+
+  // APPROVE OR REJECT ESTIMATE
+  decideEstimate = async (req: Request, res: Response) => {
+    try {
+      if (!req.user) {
+        return res.status(401).json({
+          success: false,
+          message: "Authentication required",
+        });
+      }
+
+      const idValidation = serviceOrderIdSchema.safeParse(req.params);
+      const bodyValidation = estimateDecisionSchema.safeParse(req.body);
+
+      if (!idValidation.success || !bodyValidation.success) {
+        return res.status(400).json({
+          success: false,
+          message: "Validation failed",
+          errors: {
+            params: idValidation.success ? [] : idValidation.error.issues,
+            body: bodyValidation.success ? [] : bodyValidation.error.issues,
+          },
+        });
+      }
+
+      const orderId = idValidation.data.id;
+      const decision = bodyValidation.data.decision;
+
+      // Check order ownership
+      const order = await db.query.serviceOrdersTable.findFirst({
+        where: and(
+          eq(serviceOrdersTable.id, orderId),
+          eq(serviceOrdersTable.userId, req.user.id),
+        ),
+      });
+
+      if (!order) {
+        return res.status(404).json({
+          success: false,
+          message: "Service order not found",
+        });
+      }
+
+      // Estimate must be awaiting customer approval
+      if (
+        order.status !== "awaiting_approval" ||
+        order.estimateStatus !== "pending"
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "Estimate is not awaiting approval",
+        });
+      }
+
+      const [updatedOrder] = await db
+        .update(serviceOrdersTable)
+        .set({
+          estimateStatus: decision,
+          ...(decision === "approved" && {
+            estimateApprovedAt: new Date(),
+          }),
+        })
+        .where(
+          and(
+            eq(serviceOrdersTable.id, orderId),
+            eq(serviceOrdersTable.userId, req.user.id),
+            eq(serviceOrdersTable.status, "awaiting_approval"),
+            eq(serviceOrdersTable.estimateStatus, "pending"),
+          ),
+        )
+        .returning();
+
+      if (!updatedOrder) {
+        return res.status(409).json({
+          success: false,
+          message: "Service order status has changed",
+        });
+      }
+
+      return res.status(200).json({
+        success: true,
+        message:
+          decision === "approved"
+            ? "Service estimate approved successfully"
+            : "Service estimate rejected successfully",
+        data: updatedOrder,
+      });
+    } catch (error) {
+      console.error("Estimate decision error:", error);
 
       return res.status(500).json({
         success: false,
