@@ -6,13 +6,14 @@ import vehicleRoutes from "./routes/vehicles/vehicle.route";
 import serviceRoutes from "./routes/services/service.route";
 import serviceOrderRoutes from "./routes/service-orders/service-order.route";
 import adminServiceOrderRoutes from "./routes/service-orders/admin-service-order.route";
-import paymentRoutes from "./routes/payments/payment.route";
-import paymentHistoryRoutes from "./routes/payments/payment-history.route";
 
 import { swaggerUi, swaggerSpec } from "./config/swagger";
 
 import xenditPaymentRoutes from "./routes/payments/xendit-payment.route";
 import xenditWebhookRoutes from "./routes/payments/xendit-webhook.route";
+import invoiceRoutes from "./routes/payments/invoice.route";
+import paymentRoutes from "./routes/payments/payment.route";
+import paymentHistoryRoutes from "./routes/payments/payment-history.route";
 
 dotenv.config();
 
@@ -35,6 +36,7 @@ app.use("/api/admin/payments", paymentRoutes);
 app.use("/api/payments", xenditPaymentRoutes);
 app.use("/api/webhooks", xenditWebhookRoutes);
 app.use("/api", paymentHistoryRoutes);
+app.use("/api", invoiceRoutes);
 
 // XENDIT PAYMENT SUCCESS PAGE
 app.get("/payment/success", (req, res) => {
