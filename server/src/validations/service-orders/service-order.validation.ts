@@ -44,3 +44,23 @@ export const createEstimateSchema = z.object({
     .number()
     .nonnegative("Estimated total must not be negative"),
 });
+
+// ADMIN SERVICE PROGRESS
+export const serviceProgressSchema = z.object({
+  notes: z
+    .string()
+    .trim()
+    .min(5, "Notes must be at least 5 characters")
+    .max(2000, "Notes must not exceed 2000 characters"),
+});
+
+// FINAL SERVICE COMPLETION
+export const completeServiceOrderSchema = z.object({
+  finalNotes: z
+    .string()
+    .trim()
+    .min(5, "Final notes must be at least 5 characters")
+    .max(2000, "Final notes must not exceed 2000 characters"),
+
+  finalTotal: z.number().nonnegative("Final total must not be negative"),
+});
