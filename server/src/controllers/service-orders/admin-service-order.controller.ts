@@ -686,6 +686,100 @@ export class AdminServiceOrderController {
       });
     }
   };
+
+  // CANCEL REJECTED SERVICE ORDER AND RETURN VEHICLE
+  cancelRejectedOrder = async (req: Request, res: Response) => {
+    try {
+      if (!req.user) {
+        return res.status(401).json({
+          success: false,
+          message: "Authentication required",
+        });
+      }
+
+      const validation = serviceOrderIdSchema.safeParse(req.params);
+
+      if (!validation.success) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid service order ID",
+        });
+      }
+
+      const orderId = validation.data.id;
+
+      const order = await db.query.serviceOrdersTable.findFirst({
+        where: eq(serviceOrdersTable.id, orderId),
+      });
+
+      if (!order) {
+        return res.status(404).json({
+          success: false,
+          message: "Service order not found",
+        });
+      }
+
+      if (
+        order.status !== "awaiting_approval" ||
+        order.estimateStatus !== "rejected"
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "Only rejected estimates can be cancelled",
+        });
+      }
+
+      const result = await db.transaction(async (tx) => {
+        const [updatedOrder] = await tx
+          .update(serviceOrdersTable)
+          .set({
+            status: "cancelled",
+            returnedAt: new Date(),
+          })
+          .where(
+            and(
+              eq(serviceOrdersTable.id, orderId),
+              eq(serviceOrdersTable.status, "awaiting_approval"),
+              eq(serviceOrdersTable.estimateStatus, "rejected"),
+            ),
+          )
+          .returning();
+
+        if (!updatedOrder) {
+          return null;
+        }
+
+        await tx.insert(serviceUpdatesTable).values({
+          serviceOrderId: orderId,
+          updatedBy: req.user!.id,
+          status: "cancelled",
+          notes: "Estimate rejected. Vehicle returned to customer.",
+        });
+
+        return updatedOrder;
+      });
+
+      if (!result) {
+        return res.status(409).json({
+          success: false,
+          message: "Service order status has changed",
+        });
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: "Service order cancelled successfully",
+        data: result,
+      });
+    } catch (error) {
+      console.error("Cancel service order error:", error);
+
+      return res.status(500).json({
+        success: false,
+        message: "Internal server error",
+      });
+    }
+  };
 }
 
 export default new AdminServiceOrderController();
