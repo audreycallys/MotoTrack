@@ -15,6 +15,9 @@ import invoiceRoutes from "./routes/payments/invoice.route";
 import paymentRoutes from "./routes/payments/payment.route";
 import paymentHistoryRoutes from "./routes/payments/payment-history.route";
 
+import profileRoutes from "./routes/profile/profile.route";
+import reminderRoutes from "./routes/reminders/reminder.route";
+
 dotenv.config();
 
 const app = express();
@@ -37,6 +40,8 @@ app.use("/api/payments", xenditPaymentRoutes);
 app.use("/api/webhooks", xenditWebhookRoutes);
 app.use("/api", paymentHistoryRoutes);
 app.use("/api", invoiceRoutes);
+app.use("/api/profile", profileRoutes);
+app.use("/api/reminders", reminderRoutes);
 
 // XENDIT PAYMENT SUCCESS PAGE
 app.get("/payment/success", (req, res) => {
