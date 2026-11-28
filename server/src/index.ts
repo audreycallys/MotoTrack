@@ -21,7 +21,7 @@ import reminderRoutes from "./routes/reminders/reminder.route";
 dotenv.config();
 
 const app = express();
-const PORT = 5000;
+const PORT = process.env.PORT || 5000;
 
 app.use(express.json());
 
@@ -71,7 +71,11 @@ app.get("/payment/cancel", (req, res) => {
 // Swagger Documentation
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
-app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
-  console.log(`Swagger: http://localhost:${PORT}/api-docs`);
-});
+if (!process.env.VERCEL) {
+  app.listen(PORT, () => {
+    console.log(`Server running on http://localhost:${PORT}`);
+    console.log(`Swagger: http://localhost:${PORT}/api-docs`);
+  });
+}
+
+export default app;
